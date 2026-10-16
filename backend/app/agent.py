@@ -64,4 +64,5 @@ def _source(passage: Passage) -> dict[str, str | float]:
         "title": passage.title,
         "text": passage.text,
         "score": round(passage.score, 4),
+        "matched_by": passage.matched_by,
     }

@@ -14,7 +14,7 @@ from typing import Protocol
 
 from langchain_core.language_models import BaseChatModel
 
-from .retrieval import Passage
+from .retrieval import Embedder, OpenAIEmbedder, Passage
 
 SYSTEM_PROMPT = (
     "You answer questions using only the numbered sources provided. "
@@ -75,3 +75,13 @@ def model_from_env() -> AnswerModel:
             base_url=os.environ.get("OPENAI_BASE_URL") or None,
         )
     return ExtractiveModel()
+
+
+def embedder_from_env() -> Embedder | None:
+    """Embeddings switch hybrid retrieval on. Without a key, retrieval is BM25 only."""
+    if os.environ.get("OPENAI_API_KEY"):
+        return OpenAIEmbedder(
+            model=os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small"),
+            base_url=os.environ.get("OPENAI_BASE_URL") or None,
+        )
+    return None

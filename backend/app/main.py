@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .agent import build_agent
-from .llm import model_from_env
+from .llm import embedder_from_env, model_from_env
 from .retrieval import DocumentStore, load_directory
 
 SAMPLE_DATA = Path(__file__).resolve().parent.parent / "data"
@@ -31,7 +31,7 @@ class Question(BaseModel):
 
 
 def create_app(store: DocumentStore | None = None, load_samples: bool = True) -> FastAPI:
-    store = store or DocumentStore()
+    store = store or DocumentStore(embedder=embedder_from_env())
     model = model_from_env()
 
     @asynccontextmanager
@@ -51,7 +51,7 @@ def create_app(store: DocumentStore | None = None, load_samples: bool = True) ->
 
     @app.get("/health")
     def health() -> dict[str, str]:
-        return {"status": "ok", "model": model.name}
+        return {"status": "ok", "model": model.name, "retrieval": store.mode}
 
     @app.get("/documents")
     def list_documents() -> list[dict[str, str | int]]:

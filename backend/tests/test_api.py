@@ -23,7 +23,7 @@ def events(response) -> list[tuple[str, dict]]:
 
 
 def test_health_reports_the_model(client):
-    assert client.get("/health").json() == {"status": "ok", "model": "extractive"}
+    assert client.get("/health").json() == {"status": "ok", "model": "extractive", "retrieval": "bm25"}
 
 
 def test_sample_documents_are_listed(client):
@@ -61,3 +61,15 @@ def test_an_added_document_can_be_asked_about(client):
 @pytest.mark.parametrize("body", [{}, {"question": ""}, {"question": "x" * 2001}])
 def test_bad_questions_are_rejected(client, body):
     assert client.post("/chat", json=body).status_code == 422
+
+
+def test_hybrid_mode_is_reported_and_sources_say_how_they_matched(monkeypatch):
+    from app.retrieval import DocumentStore, FunctionEmbedder
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    store = DocumentStore(embedder=FunctionEmbedder(lambda t: [1.0, float("refund" in t.lower())]))
+    store.add("returns", "Returns", "A refund is paid within five days.")
+    with TestClient(create_app(store=store, load_samples=False)) as c:
+        assert c.get("/health").json()["retrieval"] == "hybrid"
+        evs = events(c.post("/chat", json={"question": "refund"}))
+    assert evs[0][1]["sources"][0]["matched_by"] == "both"
