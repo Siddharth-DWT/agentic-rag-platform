@@ -5,6 +5,7 @@ export type Source = {
   title: string;
   text: string;
   score: number;
+  matched_by: "keyword" | "vector" | "both";
 };
 
 export type DocumentInfo = {

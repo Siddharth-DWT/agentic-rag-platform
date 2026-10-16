@@ -144,14 +144,25 @@ export default function Home() {
   );
 }
 
+const MATCH_LABEL: Record<Source["matched_by"], string> = {
+  keyword: "keyword match",
+  vector: "meaning match",
+  both: "keyword + meaning",
+};
+
 function Sources({ sources }: { sources: Source[] }) {
   return (
     <ol className="grid gap-2 sm:grid-cols-2">
       {sources.map((s, i) => (
         <li key={i} className="rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
-          <p className="font-medium">
-            <span className="mr-1 text-neutral-500">[{i + 1}]</span>
-            {s.title}
+          <p className="flex items-baseline justify-between gap-2 font-medium">
+            <span className="min-w-0 truncate">
+              <span className="mr-1 text-neutral-500">[{i + 1}]</span>
+              {s.title}
+            </span>
+            <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs font-normal text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+              {MATCH_LABEL[s.matched_by]}
+            </span>
           </p>
           <p className="mt-1 line-clamp-3 text-neutral-600 dark:text-neutral-400">{s.text}</p>
         </li>
