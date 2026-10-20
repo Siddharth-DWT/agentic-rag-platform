@@ -3,6 +3,9 @@
     START → retrieve ─┬─ passages found → generate → END
                       └─ nothing found  → no_answer → END
 
+With a reranker, `retrieve` fetches a longer candidate list and the reranker
+picks the final top_k from it.
+
 Answer tokens are emitted on LangGraph's `custom` stream as they are produced,
 so the API can forward them to the browser while the graph is still running.
 """
@@ -15,6 +18,7 @@ from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 
 from .llm import AnswerModel
+from .rerank import Reranker, rerank
 from .retrieval import DocumentStore, Passage
 
 NO_ANSWER = "I couldn't find anything about that in the documents."
@@ -26,9 +30,19 @@ class AgentState(TypedDict, total=False):
     answer: str
 
 
-def build_agent(store: DocumentStore, model: AnswerModel, top_k: int = 4):
+def build_agent(
+    store: DocumentStore,
+    model: AnswerModel,
+    top_k: int = 4,
+    reranker: Reranker | None = None,
+    candidates: int = 12,
+):
     def retrieve(state: AgentState) -> AgentState:
-        passages = store.search(state["question"], top_k=top_k)
+        question = state["question"]
+        if reranker:
+            passages = rerank(reranker, question, store.search(question, top_k=candidates), top_k)
+        else:
+            passages = store.search(question, top_k=top_k)
         get_stream_writer()({"type": "sources", "sources": [_source(p) for p in passages]})
         return {"passages": passages}
 

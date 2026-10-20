@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from .agent import build_agent
 from .llm import embedder_from_env, model_from_env
+from .rerank import Reranker, reranker_from_env
 from .retrieval import DocumentStore, load_directory
 
 SAMPLE_DATA = Path(__file__).resolve().parent.parent / "data"
@@ -30,15 +31,20 @@ class Question(BaseModel):
     question: str = Field(min_length=1, max_length=2_000)
 
 
-def create_app(store: DocumentStore | None = None, load_samples: bool = True) -> FastAPI:
+def create_app(
+    store: DocumentStore | None = None,
+    load_samples: bool = True,
+    reranker: Reranker | None = None,
+) -> FastAPI:
     store = store or DocumentStore(embedder=embedder_from_env())
     model = model_from_env()
+    reranker = reranker or reranker_from_env()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if load_samples and SAMPLE_DATA.is_dir():
             load_directory(store, SAMPLE_DATA)
-        app.state.agent = build_agent(store, model)
+        app.state.agent = build_agent(store, model, reranker=reranker)
         yield
 
     app = FastAPI(title="Agentic RAG Platform", version="0.1.0", lifespan=lifespan)
@@ -50,8 +56,13 @@ def create_app(store: DocumentStore | None = None, load_samples: bool = True) ->
     )
 
     @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok", "model": model.name, "retrieval": store.mode}
+    def health() -> dict[str, str | None]:
+        return {
+            "status": "ok",
+            "model": model.name,
+            "retrieval": store.mode,
+            "reranker": reranker.name if reranker else None,
+        }
 
     @app.get("/documents")
     def list_documents() -> list[dict[str, str | int]]:

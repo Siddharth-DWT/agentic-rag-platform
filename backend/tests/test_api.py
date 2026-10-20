@@ -23,7 +23,12 @@ def events(response) -> list[tuple[str, dict]]:
 
 
 def test_health_reports_the_model(client):
-    assert client.get("/health").json() == {"status": "ok", "model": "extractive", "retrieval": "bm25"}
+    assert client.get("/health").json() == {
+        "status": "ok",
+        "model": "extractive",
+        "retrieval": "bm25",
+        "reranker": None,
+    }
 
 
 def test_sample_documents_are_listed(client):
