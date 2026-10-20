@@ -27,8 +27,9 @@ flowchart LR
 
 1. **Ingest.** Documents are split into overlapping chunks with LlamaIndex's `SentenceSplitter`, indexed with BM25 and, when an embedding model is configured, embedded.
 2. **Retrieve.** The agent's `retrieve` node runs keyword search (BM25) and vector search side by side and merges the two rankings with reciprocal rank fusion. It immediately streams the best chunks to the UI as sources, each labelled with how it matched.
-3. **Route.** A conditional edge sends the run to `generate`, or to `no_answer` when nothing relevant was found, so the model is never asked to answer from nothing.
-4. **Generate.** The answer streams token by token, citing sources as `[1]`, `[2]`. Tokens travel on LangGraph's `custom` stream, so the browser sees them while the graph is still running.
+3. **Rerank (optional).** With `RERANKER_MODEL` set, retrieval returns a longer candidate list and a cross-encoder rereads the question with each candidate to pick the final sources.
+4. **Route.** A conditional edge sends the run to `generate`, or to `no_answer` when nothing relevant was found, so the model is never asked to answer from nothing.
+5. **Generate.** The answer streams token by token, citing sources as `[1]`, `[2]`. Tokens travel on LangGraph's `custom` stream, so the browser sees them while the graph is still running.
 
 ## Hybrid retrieval
 
@@ -42,6 +43,17 @@ Keyword and vector search fail in opposite ways, so the app runs both.
 The two rankings are merged with **reciprocal rank fusion**: each list adds `1 / (60 + rank)` for every chunk it returns. RRF uses ranks only, so BM25 scores and cosine similarities never have to be put on one scale, and a chunk that both searches rank highly comes first. Vector matches below a similarity floor are dropped, so an unrelated question still gets "not found" instead of the least-bad chunk.
 
 Without an API key the app runs keyword-only; `/health` reports `"retrieval": "bm25"` or `"hybrid"`.
+
+## Reranking
+
+Retrieval scores each chunk on its own. A cross-encoder reads the question and a candidate passage together, which catches a passage that answers the question without repeating its words, and drops one that repeats the words without answering. It is too slow to run over a whole corpus, so the agent retrieves 12 candidates and the cross-encoder picks the best 4.
+
+```bash
+pip install -r backend/requirements-rerank.txt
+export RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+```
+
+`/health` reports the reranker in use, or `null` when reranking is off. Any object with a `name` and a `score(question, texts)` method can be passed to `create_app(reranker=...)`.
 
 ## Quick start
 
@@ -74,7 +86,7 @@ npm run dev
 
 | Method | Path | What it does |
 | --- | --- | --- |
-| `GET` | `/health` | Status, the model in use and the retrieval mode |
+| `GET` | `/health` | Status, the model in use, the retrieval mode and the reranker |
 | `GET` | `/documents` | Documents in the index, with chunk counts |
 | `POST` | `/documents` | Add a document: `{"title": "...", "text": "..."}` |
 | `POST` | `/chat` | Ask a question: `{"question": "..."}`. Streams `sources`, `token` and `done` events |
@@ -91,6 +103,7 @@ backend/
   app/retrieval.py   chunking, BM25 + vector search, rank fusion
   app/agent.py       the LangGraph graph
   app/llm.py         OpenAI-compatible model and offline fallback
+  app/rerank.py      optional cross-encoder reranking
   app/main.py        FastAPI app and SSE streaming
   data/              sample documents
   tests/             pytest suite, runs offline
@@ -104,7 +117,7 @@ frontend/            Next.js chat UI
 - [x] Next.js chat UI with live sources and citations
 - [x] Offline test suite and CI
 - [x] Hybrid retrieval: vector search alongside BM25, merged with reciprocal rank fusion
-- [ ] Reranking with a cross-encoder
+- [x] Reranking with a cross-encoder
 - [ ] Document ingestion from PDFs, Office files and web pages
 - [ ] Conversation memory with a LangGraph checkpointer
 - [ ] Human-in-the-loop approval for tool calls
