@@ -9,8 +9,8 @@ and its tests run with no keys at all.
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator
-from typing import Protocol
+from collections.abc import AsyncIterator, Sequence
+from typing import Protocol, TypedDict
 
 from langchain_core.language_models import BaseChatModel
 
@@ -23,6 +23,13 @@ SYSTEM_PROMPT = (
 )
 
 
+class Turn(TypedDict):
+    """One question and its answer, earlier in the same conversation."""
+
+    question: str
+    answer: str
+
+
 def format_sources(passages: list[Passage]) -> str:
     return "\n\n".join(f"[{i}] {p.title}\n{p.text}" for i, p in enumerate(passages, start=1))
 
@@ -30,7 +37,9 @@ def format_sources(passages: list[Passage]) -> str:
 class AnswerModel(Protocol):
     name: str
 
-    def stream(self, question: str, passages: list[Passage]) -> AsyncIterator[str]: ...
+    def stream(
+        self, question: str, passages: list[Passage], history: Sequence[Turn] = ()
+    ) -> AsyncIterator[str]: ...
 
 
 class ExtractiveModel:
@@ -38,7 +47,9 @@ class ExtractiveModel:
 
     name = "extractive"
 
-    async def stream(self, question: str, passages: list[Passage]) -> AsyncIterator[str]:
+    async def stream(
+        self, question: str, passages: list[Passage], history: Sequence[Turn] = ()
+    ) -> AsyncIterator[str]:
         yield "From the documents:\n\n"
         for i, passage in enumerate(passages[:2], start=1):
             snippet = " ".join(passage.text.split())
@@ -58,11 +69,13 @@ class ChatModel:
             llm = ChatOpenAI(model=model, base_url=base_url, temperature=0, streaming=True)
         self._llm = llm
 
-    async def stream(self, question: str, passages: list[Passage]) -> AsyncIterator[str]:
-        messages = [
-            ("system", SYSTEM_PROMPT),
-            ("human", f"Sources:\n\n{format_sources(passages)}\n\nQuestion: {question}"),
-        ]
+    async def stream(
+        self, question: str, passages: list[Passage], history: Sequence[Turn] = ()
+    ) -> AsyncIterator[str]:
+        messages: list[tuple[str, str]] = [("system", SYSTEM_PROMPT)]
+        for turn in history:
+            messages += [("human", turn["question"]), ("ai", turn["answer"])]
+        messages.append(("human", f"Sources:\n\n{format_sources(passages)}\n\nQuestion: {question}"))
         async for chunk in self._llm.astream(messages):
             if isinstance(chunk.content, str) and chunk.content:
                 yield chunk.content
