@@ -55,6 +55,17 @@ export RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
 
 `/health` reports the reranker in use, or `null` when reranking is off. Any object with a `name` and a `score(question, texts)` method can be passed to `create_app(reranker=...)`.
 
+## Conversation memory
+
+Each conversation is a LangGraph thread. The graph is compiled with a checkpointer, which stores its state per `thread_id`, and every answer appends one turn to the `history` channel (an `operator.add` reducer).
+
+- `/chat` returns the conversation's id in the `X-Thread-Id` header; send it back as `thread_id` to continue. Without it, a new conversation starts.
+- A follow-up often shares no words with the documents ("tell me more"). When it finds nothing on its own, retrieval runs again with the previous question in front of it.
+- The chat model receives the earlier turns as messages, so it can resolve "it" and "that".
+- `DELETE /threads/{thread_id}` forgets a conversation; the UI's **New chat** button does this.
+
+Conversations are kept in memory (`InMemorySaver`). Pass any LangGraph checkpointer, such as SQLite or Postgres, to `create_app(checkpointer=...)` to keep them across restarts.
+
 ## Quick start
 
 **Docker**
@@ -89,7 +100,8 @@ npm run dev
 | `GET` | `/health` | Status, the model in use, the retrieval mode and the reranker |
 | `GET` | `/documents` | Documents in the index, with chunk counts |
 | `POST` | `/documents` | Add a document: `{"title": "...", "text": "..."}` |
-| `POST` | `/chat` | Ask a question: `{"question": "..."}`. Streams `sources`, `token` and `done` events |
+| `POST` | `/chat` | Ask a question: `{"question": "...", "thread_id": "..."}` (`thread_id` optional). Streams `sources`, `token` and `done` events; the thread id is in `X-Thread-Id` |
+| `DELETE` | `/threads/{thread_id}` | Forget a conversation |
 
 ```bash
 curl -N -X POST localhost:8000/chat -H 'Content-Type: application/json' \
@@ -101,7 +113,7 @@ curl -N -X POST localhost:8000/chat -H 'Content-Type: application/json' \
 ```
 backend/
   app/retrieval.py   chunking, BM25 + vector search, rank fusion
-  app/agent.py       the LangGraph graph
+  app/agent.py       the LangGraph graph and conversation memory
   app/llm.py         OpenAI-compatible model and offline fallback
   app/rerank.py      optional cross-encoder reranking
   app/main.py        FastAPI app and SSE streaming
@@ -119,7 +131,7 @@ frontend/            Next.js chat UI
 - [x] Hybrid retrieval: vector search alongside BM25, merged with reciprocal rank fusion
 - [x] Reranking with a cross-encoder
 - [ ] Document ingestion from PDFs, Office files and web pages
-- [ ] Conversation memory with a LangGraph checkpointer
+- [x] Conversation memory with a LangGraph checkpointer
 - [ ] Human-in-the-loop approval for tool calls
 - [ ] The agent's tools exposed as a remote MCP server with OAuth
 - [ ] Tracing with Langfuse
