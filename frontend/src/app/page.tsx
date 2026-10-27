@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 
-import { addDocument, ask, DocumentInfo, listDocuments, Source } from "@/lib/api";
+import { addDocument, ask, DocumentInfo, forgetThread, listDocuments, Source } from "@/lib/api";
 
 type Turn = {
   question: string;
@@ -19,6 +19,8 @@ const SUGGESTIONS = [
 
 export default function Home() {
   const [turns, setTurns] = useState<Turn[]>([]);
+  // The server keeps the conversation under this id, so follow-ups have context.
+  const [threadId, setThreadId] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export default function Home() {
     setTurns((all) => [...all, { question: q, answer: "", sources: [], status: "streaming" }]);
     abort.current = new AbortController();
     try {
-      for await (const ev of ask(q, abort.current.signal)) {
+      for await (const ev of ask(q, { threadId, onThread: setThreadId, signal: abort.current.signal })) {
         if (ev.event === "sources") update((t) => ({ ...t, sources: ev.sources }));
         else if (ev.event === "token") update((t) => ({ ...t, answer: t.answer + ev.text }));
         else if (ev.event === "error") update((t) => ({ ...t, answer: ev.message, status: "error" }));
@@ -54,14 +56,33 @@ export default function Home() {
     }
   }
 
+  function newChat() {
+    if (busy) return;
+    if (threadId) forgetThread(threadId).catch(() => {});
+    setThreadId(null);
+    setTurns([]);
+  }
+
   return (
     <div className="mx-auto grid w-full max-w-6xl flex-1 gap-6 px-4 py-8 md:grid-cols-[1fr_280px]">
       <main className="flex min-w-0 flex-col gap-6">
-        <header>
-          <h1 className="text-2xl font-semibold tracking-tight">Agentic RAG</h1>
-          <p className="text-sm text-neutral-500">
-            Answers come only from the indexed documents, with every claim cited.
-          </p>
+        <header className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Agentic RAG</h1>
+            <p className="text-sm text-neutral-500">
+              Answers come only from the indexed documents, with every claim cited. Follow-up questions
+              keep the context of the conversation.
+            </p>
+          </div>
+          {turns.length > 0 && (
+            <button
+              onClick={newChat}
+              disabled={busy}
+              className="shrink-0 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-900"
+            >
+              New chat
+            </button>
+          )}
         </header>
 
         {backendError && (

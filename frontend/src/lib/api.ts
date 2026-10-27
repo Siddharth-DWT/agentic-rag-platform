@@ -39,17 +39,30 @@ export function parseEvents(buffer: string): { events: ChatEvent[]; rest: string
   return { events, rest };
 }
 
+type AskOptions = {
+  /** Continue this conversation; omit to start a new one. */
+  threadId?: string | null;
+  /** Receives the conversation's thread id, new or continued. */
+  onThread?: (threadId: string) => void;
+  signal?: AbortSignal;
+};
+
 /** POST a question and yield events as the answer streams in. */
-export async function* ask(question: string, signal?: AbortSignal): AsyncGenerator<ChatEvent> {
+export async function* ask(
+  question: string,
+  { threadId, onThread, signal }: AskOptions = {},
+): AsyncGenerator<ChatEvent> {
   const response = await fetch(`${API_URL}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify(threadId ? { question, thread_id: threadId } : { question }),
     signal,
   });
   if (!response.ok || !response.body) {
     throw new Error(`The server answered ${response.status}.`);
   }
+  const returnedThread = response.headers.get("X-Thread-Id");
+  if (returnedThread) onThread?.(returnedThread);
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
   while (true) {
@@ -59,6 +72,11 @@ export async function* ask(question: string, signal?: AbortSignal): AsyncGenerat
     buffer = parsed.rest;
     yield* parsed.events;
   }
+}
+
+/** Forget a conversation on the server. */
+export async function forgetThread(threadId: string): Promise<void> {
+  await fetch(`${API_URL}/threads/${encodeURIComponent(threadId)}`, { method: "DELETE" });
 }
 
 export async function listDocuments(): Promise<DocumentInfo[]> {
