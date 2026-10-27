@@ -19,6 +19,9 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements*.txt
       - run: pip install -r requirements-dev.txt
+      # NLTK 3.10.4+ refuses data in group-writable folders, which includes the copy
+      # LlamaIndex bundles in site-packages on GitHub runners; fetch a private copy.
+      - run: python -m nltk.downloader -d ~/nltk_data stopwords punkt_tab
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
